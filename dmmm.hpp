@@ -40,7 +40,12 @@ public:
     m_krnl_dmmm = new cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>(kernel);
 
     std::vector<cl::Memory> inBufVec;
-    
+    m_wt_p_bufs = (cl::Buffer**)malloc(NUM_W_P * sizeof(cl::Buffer*));
+    if (!m_wt_p_bufs) {
+      std::cerr << "ERROR: failed to allocate memory for weight partition buffer pointers in DMMM\n";
+      exit(1);
+    }
+
     // create transpose partitions of weight matrix w
     for (size_t c = 0; c < NUM_C_P; ++c) {
       for (size_t f = 0; f < NUM_F_P; ++f) {
@@ -83,17 +88,22 @@ public:
     for (size_t i = 0; i < NUM_W_P; ++i) {
       delete m_wt_p_bufs[i];
     }
+    free(m_wt_p_bufs);
     delete m_hw_p_buf;
   }
 
   // may need to make sure h is contiguous is memory using an alligned_allocator?
   // @param input   h_r:      K * C slice of layer matrix, K <= N_P
+  // @param input   hw_r:     N_P * F array to store the product of h_r and weight matrix w
   // @param input   H_R_ID:   index of N_P * C_P slice in total layer matrix, < NUM_N_P
-  // @param output  m_hw_r:   N_P * F product of h_r and weight matrix w
-  const float* operate_row(float* h_r, const size_t H_R_ID) {
-    // zero initialize N_P * F output in which partial N_P * F_P are accumulated
-    for (size_t i = 0; i < SIZE_HW_R; ++i) {
-      m_hw_r[i] = 0.0;
+  void operate_row(float* h_r, float* hw_r, const size_t H_R_ID) {
+    // zero initialize K * F output in which partial N_P * F_P are accumulated
+    for (int i = 0, hw_r_i = H_R_ID * N_P; i < N_P; ++i, ++hw_r_i) {
+      for (int j = 0; j < F; ++j) {
+        if (hw_r_i < N) {
+          hw_r[i * F + j] = 0.0;
+        }
+      }
     }
     
     float h_p[SIZE_H_P]; // current working partition of layer matrix h loaded in systolic array
@@ -133,27 +143,22 @@ public:
         m_queue->enqueueMigrateMemObjects(m_outBufVec, CL_MIGRATE_MEM_OBJECT_HOST);
         m_queue->finish(); // synchronization barrier
 
-        reorder_accumulate(m_hw_p, m_hw_r, f);
+        reorder_accumulate(m_hw_p, hw_r, f);
       }
     }
-    
-    return m_hw_r;
   }
 
 private:
 
-
-
-  static void reorder_accumulate(float* hw_p, float* hw_r, const size_t HW_P_ID) {
-    for (size_t i = 0; i < N_P; ++i) {
+  static void reorder_accumulate(float* hw_p, float* hw_r, const size_t HW_R_ID, const size_t HW_P_ID) {
+    for (size_t i = 0, hw_r_i = HW_R_ID * N_P; i < N_P; ++i, ++hw_r_i) {
       for (size_t j = 0, hw_r_j = HW_P_ID * F_P; j < F_P; ++j, ++hw_r_j) {
-	if (hw_r_j < F) {
-	  hw_r[(i * F) + hw_r_j] += hw_p[i * F_P + j];
-	}
+        if ((hw_r_i < N) && (hw_r_j < F)) {
+          hw_r[(i * F) + hw_r_j] += hw_p[i * F_P + j];
+        }
       }
     }
   }
-
 
 
   // uses constants from common_header_U1.h
@@ -186,12 +191,11 @@ private:
   cl::Context* m_context;
   cl::CommandQueue* m_queue;
   cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>* m_krnl_dmmm;
-  cl::Buffer* m_wt_p_bufs[NUM_W_P];
+  cl::Buffer** m_wt_p_bufs;
   cl::Buffer* m_hw_p_buf;
 
   std::vector<cl::Memory> m_outBufVec;
   float m_hw_p[SIZE_HW_P];
-  float m_hw_r[SIZE_HW_R];
 };
 
 
