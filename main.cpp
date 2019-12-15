@@ -6,6 +6,9 @@
 #include "dmmm.hpp"
 
 int main() {
+  std::cout << "N, C, F: " << N << ", " << C << ", " << F << "\n";
+  std::cout << "N_P, C_P, F_P: " << N_P << ", " << C_P << ", " << F_P << "\n";
+  std::cout << "NUM_N_P, NUM_C_P, NUM_F_P: " << NUM_N_P << ", " << NUM_C_P << ", " << NUM_F_P << "\n";
   float w[SIZE_W], h[SIZE_H], hw[SIZE_HW];
   for (size_t i = 0; i < SIZE_W; ++i) {
     w[i] = 2;//(float)rand();
