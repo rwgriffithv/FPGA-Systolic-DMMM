@@ -63,12 +63,11 @@ int main() {
 
   if (fin) {
     std::cout << "due to many errors, checking for edge value at (" << N-1 << "," << F-1 << "): " << hw[(N - 1) * F + F-1] << "\n";
+    std::cout << "due to many errors, checking for edge value at (" << 0 << "," << F-1 << "): " << hw[F-1] << "\n";
     std::cout << "due to many errors, checking for edge value at (" << N-3 << "," << 3 << "): " << hw[(N - 3) * F + F-3] << "\n";
     std::cout << "due to many errors, checking for edge value at (" << N-2 << "," << 2 << "): " << hw[(N - 2) * F + F-2] << "\n";
     std::cout << "due to many errors, checking for edge value at (" << N-1 << "," << 1 << "): " << hw[(N - 1) * F + F-1] << "\n";
-    return 0;
   }
 
-  std::cout << "SUCCESS? made it to the end!\n";
   return 0;
 }

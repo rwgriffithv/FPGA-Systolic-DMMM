@@ -142,6 +142,20 @@ public:
 
 private:
 
+
+
+  static void reorder_accumulate(float* hw_p, float* hw_r, const size_t HW_P_ID) {
+    for (size_t i = 0; i < N_P; ++i) {
+      for (size_t j = 0, hw_r_j = HW_P_ID * F_P; j < F_P; ++j, ++hw_r_j) {
+	if (hw_r_j < F) {
+	  hw_r[(i * F) + hw_r_j] += hw_p[i * F_P + j];
+	}
+      }
+    }
+  }
+
+
+
   // uses constants from common_header_U1.h
   // constants set when kernel is build from specifications in vsa.json
   // reordering is dependent on these constants
@@ -151,7 +165,7 @@ private:
   // @param input hw_p:       array of size N_P * F_P
   // @param input hw_r:       array of size N_P * F to which hw_p is added to
   // @param input HW_P_ID:    index of N_P * F_P slice of hw_r that hw_p is added to
-  static void reorder_accumulate(float* hw_p, float* hw_r, const size_t HW_P_ID) {
+  static void reorder_accumulate_old(float* hw_p, float* hw_r, const size_t HW_P_ID) {
     for (int i_t = 0; i_t < U1_I; i_t += U1_I_T) {
       for (int j_t = 0; j_t < U1_J; j_t += U1_J_T) {
         for (int i = 0; i < U1_I_T; i++) {
@@ -162,7 +176,7 @@ private:
             if ((HW_P_ID * F_P) + j_ind < F) {
               unsigned int chunk_offset = ((i_t / U1_I_T) * (U1_J / U1_J_T) + (j_t / U1_J_T)) * U1_I_T * U1_J_T;
               hw_r[(i_ind * F) + (HW_P_ID * F_P) + j_ind] += hw_p[chunk_offset + i * U1_J_T + j];
-            }
+	    }
           }
         }
       }

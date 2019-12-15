@@ -6,12 +6,12 @@
 #include "common_header_U1.h"
 
 
-const size_t N = 1000;
-const size_t C = 500;
-const size_t F = 400;
-const size_t N_P = U1_I;    // dim of systolic array
-const size_t C_P = U1_K;    // dim of systolic array
-const size_t F_P = U1_J;    // dim of systolic array
+const size_t N = 128;
+const size_t C = 128;
+const size_t F = 256;
+const size_t N_P = U1_I_T;    // dim of systolic array
+const size_t C_P = U1_K_T;    // dim of systolic array
+const size_t F_P = U1_J_T;    // dim of systolic array
 
 const size_t SIZE_H = N * C;
 const size_t SIZE_W = C * F;
