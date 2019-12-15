@@ -96,7 +96,7 @@ public:
   // @param input   h_r:      K * C slice of layer matrix, K <= N_P
   // @param input   H_R_ID:   index of N_P * C_P slice in total layer matrix, < NUM_N_P
   // @param output  m_hw_r:   N_P * F product of h_r and weight matrix w
-  const float* operate_row(float* h_r, const size_t H_R_ID) const {
+  const float* operate_row(float* h_r, const size_t H_R_ID) {
     // zero initialize N_P * F output in which partial N_P * F_P are accumulated
     for (size_t i = 0; i < SIZE_HW_R; ++i) {
       m_hw_r[i] = 0.0;
@@ -111,7 +111,7 @@ public:
 
       for (size_t i = 0; i < N_P; ++i) {
         for (size_t j = 0, h_j = c * C_P; j < C_P; ++j, ++h_j) {
-          if ((H_R_ID * NP + i >= N) || (h_j >= C)) {
+          if ((H_R_ID * N_P + i >= N) || (h_j >= C)) {
             // zero padding to fit in systolic array size
             h_p[i*C_P + j] = 0.0;
           } else {
@@ -123,7 +123,7 @@ public:
       //Allocate Buffer in Global Memory
       cl::Buffer h_p_buf(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
 		                    SIZE_H_P * sizeof(float), h);
-      inBufVec.push_back(h_buf);
+      inBufVec.push_back(h_p_buf);
 
       //Copy layer partition data to device global memory
       m_queue->enqueueMigrateMemObjects(inBufVec, 0); // 0 means from host

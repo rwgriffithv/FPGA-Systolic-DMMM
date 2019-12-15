@@ -19,12 +19,12 @@ int main() {
   std::cout << "DMMM created\n";
 
   const float* hw_r;
-  size_t hw_j = 0;
-  for (size_t i = 0; i < SIZE_H; i+=SIZE_H_R) {
-    hw_r = D.operate(&(h[i]));
-    std::cout << "calculated output rows " << i/C << " to " << i/C + N_P - 1 << "\n";
-    for (size_t j = 0; j < N_P*F; ++j, ++hw_j) {
-      hw[hw_j] = hw_r[j];
+  size_t i_hw = 0;
+  for (size_t n = 0; n < NUM_N_P; ++n) {
+    hw_r = D.operate_row(&(h[n * SIZE_H_R]), n);
+    std::cout << "calculated output rows " << n * N_P << " to " << (n + 1) * N_P - 1 << "\n";
+    for (size_t i = 0; i < SIZE_H_R && i_hw < SIZE_H; ++i, ++i_hw) {
+      hw[i_hw] = hw_r[i];
     }
     std::cout << "copied output rows to full hw matrix\n";
   }
