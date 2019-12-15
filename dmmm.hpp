@@ -122,7 +122,7 @@ public:
 
       //Allocate Buffer in Global Memory
       cl::Buffer h_p_buf(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-		                    SIZE_H_P * sizeof(float), h);
+		                    SIZE_H_P * sizeof(float), h_p);
       inBufVec.push_back(h_p_buf);
 
       //Copy layer partition data to device global memory
@@ -134,7 +134,7 @@ public:
         
         // Launch the systolic array dmmm Kernel, last 2 args always 1
         (*m_krnl_dmmm)(cl::EnqueueArgs(*m_queue, cl::NDRange(1, 1, 1), cl::NDRange(1, 1, 1)),
-                                      h_p_buf, w_p_buf, m_outBufVec[0], true, 1);
+                                      h_p_buf, w_p_buf, m_outBufVec[0], 1, 1);
 
         // Copy Result from Device Global Memory to Host Local Memory
         m_queue->enqueueMigrateMemObjects(m_outBufVec, CL_MIGRATE_MEM_OBJECT_HOST);
