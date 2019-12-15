@@ -71,15 +71,14 @@ public:
         inBufVec.push_back(*w_p_buf); // used for enqueing buffers to global memory
       }
     }
-      
+
     //Copy weight input data to device global memory
     m_queue->enqueueMigrateMemObjects(inBufVec, 0/* 0 means from host*/);
+    m_queue->finish();
 
     m_hw_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
             			     SIZE_HW_P * sizeof(float), m_hw_p);
     m_outBufVec.push_back(*m_hw_p_buf);
-
-    // do not need q.finish()
   }
 
   ~DMMM() {
@@ -108,11 +107,9 @@ public:
 
     // operate on each N_P * C_P partition
     for (size_t c = 0; c < NUM_C_P; ++c) {
-      inBufVec.pop_back();
-
-      for (size_t i = 0; i < N_P; ++i) {
+      for (size_t i = 0, h_i = H_R_ID * N_P; i < N_P; ++i, ++h_i) {
         for (size_t j = 0, h_j = c * C_P; j < C_P; ++j, ++h_j) {
-          if ((H_R_ID * N_P + i >= N) || (h_j >= C)) {
+          if ((h_i >= N) || (h_j >= C)) {
             // zero padding to fit in systolic array size
             h_p[i*C_P + j] = 0.0;
           } else {
@@ -132,7 +129,7 @@ public:
       // operate on each C_P * F_P corresponding to the same c-dimension indices
       for (size_t f = 0; f < NUM_F_P; ++f) {
         cl::Buffer w_p_buf = *(m_w_p_bufs[c * NUM_F_P + f]);
-        
+
         // Launch the systolic array dmmm Kernel, last 2 args always 1
         (*m_krnl_dmmm)(cl::EnqueueArgs(*m_queue, cl::NDRange(1, 1, 1), cl::NDRange(1, 1, 1)),
                                       h_p_buf, w_p_buf, *m_hw_p_buf, 1, 1);
@@ -140,7 +137,7 @@ public:
         // Copy Result from Device Global Memory to Host Local Memory
         m_queue->enqueueMigrateMemObjects(m_outBufVec, CL_MIGRATE_MEM_OBJECT_HOST);
         m_queue->finish(); // synchronization barrier
-      
+
         reorder_accumulate(m_hw_p, m_hw_r, f);
       }
     }
@@ -154,12 +151,13 @@ private:
   // constants set when kernel is build from specifications in vsa.json
   // reordering is dependent on these constants
   // function modified from Jie's tb_app.cpp to also accumulate
-  // U1_I = N_P
-  // U1_J = F_P
+  // U1_I_T = N_P
+  // U1_J_T = F_P
   // @param input hw_p:       array of size N_P * F_P
   // @param input hw_r:       array of size N_P * F to which hw_p is added to
   // @param input HW_P_ID:    index of N_P * F_P slice of hw_r that hw_p is added to
   static void reorder_accumulate(float* hw_p, float* hw_r, const size_t HW_P_ID) {
+    size_t cnt = 0;
     for (int i_t = 0; i_t < U1_I; i_t += U1_I_T) {
       for (int j_t = 0; j_t < U1_J; j_t += U1_J_T) {
         for (int i = 0; i < U1_I_T; i++) {
@@ -170,7 +168,9 @@ private:
             if ((HW_P_ID * F_P) + j_ind < F) {
               unsigned int chunk_offset = ((i_t / U1_I_T) * (U1_J / U1_J_T) + (j_t / U1_J_T)) * U1_I_T * U1_J_T;
               hw_r[(i_ind * F) + (HW_P_ID * F_P) + j_ind] += hw_p[chunk_offset + i * U1_J_T + j];
-            }
+            } else {
+	      cnt++;
+	    }
           }
         }
       }
