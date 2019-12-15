@@ -75,9 +75,9 @@ public:
     //Copy weight input data to device global memory
     m_queue->enqueueMigrateMemObjects(inBufVec, 0/* 0 means from host*/);
 
-    cl::Buffer hw_p_buf(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
+    m_hw_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
             			     SIZE_HW_P * sizeof(float), m_hw_p);
-    m_outBufVec.push_back(hw_p_buf);
+    m_outBufVec.push_back(*hw_p_buf);
 
     // do not need q.finish()
   }
@@ -90,6 +90,7 @@ public:
       free(m_w_ps[i]);
       delete m_w_p_bufs[i];
     }
+    delete m_hw_p_buf;
   }
 
   // may need to make sure h is contiguous is memory using an alligned_allocator?
@@ -134,7 +135,7 @@ public:
         
         // Launch the systolic array dmmm Kernel, last 2 args always 1
         (*m_krnl_dmmm)(cl::EnqueueArgs(*m_queue, cl::NDRange(1, 1, 1), cl::NDRange(1, 1, 1)),
-                                      h_p_buf, w_p_buf, m_outBufVec[0], 1, 1);
+                                      h_p_buf, w_p_buf, *m_hw_p_buf, 1, 1);
 
         // Copy Result from Device Global Memory to Host Local Memory
         m_queue->enqueueMigrateMemObjects(m_outBufVec, CL_MIGRATE_MEM_OBJECT_HOST);
@@ -181,6 +182,7 @@ private:
   cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>* m_krnl_dmmm;
   std::vector<float*> m_w_ps;
   std::vector<cl::Buffer*> m_w_p_bufs;
+  cl::Buffer* m_hw_p_buf;
 
   std::vector<cl::Memory> m_outBufVec;
   float m_hw_p[SIZE_HW_P];
