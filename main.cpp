@@ -24,12 +24,8 @@ int main() {
   const float* hw_r;
   size_t i_hw = 0;
   for (size_t n = 0; n < NUM_N_P; ++n) {
-    hw_r = D.operate_row(&(h[n * SIZE_H_R]), n);
+    D.operate_row(&(h[n * SIZE_H_R]), &(hw[n * SIZE_HW_R]), n);
     std::cout << "calculated output rows " << n * N_P << " to " << (n + 1) * N_P - 1 << "\n";
-    for (size_t i = 0; i < SIZE_H_R && i_hw < SIZE_HW; ++i, ++i_hw) {
-      hw[i_hw] = hw_r[i];
-    }
-    std::cout << "copied output rows to full hw matrix\n";
   }
 
   size_t error_cnt = 0;

@@ -143,7 +143,7 @@ public:
         m_queue->enqueueMigrateMemObjects(m_outBufVec, CL_MIGRATE_MEM_OBJECT_HOST);
         m_queue->finish(); // synchronization barrier
 
-        reorder_accumulate(m_hw_p, hw_r, f);
+        reorder_accumulate(m_hw_p, hw_r, H_R_ID, f);
       }
     }
   }
