@@ -6,6 +6,9 @@
 
 #include "common_header_U1.h"
 
+
+extern "C" {
+
 void systolic_array_kernel(
   U1_bus_t0* global_A,
   U1_bus_t1* global_B,
@@ -24,4 +27,6 @@ void systolic_array_kernel(
 #pragma HLS INTERFACE s_axilite port=return bundle=control
 
   U1_kernel(global_A, global_B, global_C, init, FILTER_S);
+}
+
 }
