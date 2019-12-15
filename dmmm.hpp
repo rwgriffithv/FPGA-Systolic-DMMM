@@ -77,7 +77,7 @@ public:
 
     m_hw_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
             			     SIZE_HW_P * sizeof(float), m_hw_p);
-    m_outBufVec.push_back(m_hw_p_buf);
+    m_outBufVec.push_back(*m_hw_p_buf);
 
     // do not need q.finish()
   }
