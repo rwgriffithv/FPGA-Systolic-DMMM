@@ -17,15 +17,8 @@ int main() {
     h[i] = ((float)rand()) / RAND_MAX;
   }
 
-  float wt[SIZE_W];
-  for (size_t c = 0; c < C; ++c) {
-    for (size_t f = 0; f < F; ++f) {
-      wt[f*C + c] = w[c * F + f];
-    }
-  }
-
   const std::string k_name = "systolic_array_kernel";
-  DMMM D(wt, k_name);
+  DMMM D(w, k_name);
   std::cout << "DMMM created\n";
 
   const float* hw_r;

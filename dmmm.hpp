@@ -41,39 +41,34 @@ public:
 
     std::vector<cl::Memory> inBufVec;
     
-    // create partitions of weight matrix w
+    // create transpose partitions of weight matrix w
     for (size_t c = 0; c < NUM_C_P; ++c) {
       for (size_t f = 0; f < NUM_F_P; ++f) {
         
-        // create C_P * F_P partition
-        float* w_p = (float*)malloc(SIZE_W_P * sizeof(float));
-        if (!w_p) {
-          std::cerr << "ERROR: failed to allocate memory for partition of w in DMMM constructor\n";
-          exit(1);
-        }
+        // create F_P * C_P transpose partition wt_p
+        float wt_p[F_P * C_P];
         
         for (size_t i = 0, w_i = c * C_P; i < C_P; ++i, ++w_i) {
           for (size_t j = 0, w_j = f * F_P; j < F_P; ++j, ++w_j) {
             if ((w_i >= C) || (w_j >= F)) {
               // zero padding to fit in systolic array size
-              w_p[i*F_P + j] = 0.0;
+              wt_p[j * C_P + i] = 0.0;
             } else {
-              w_p[i*F_P + j] = w[w_i * F + w_j];
+              wt_p[j * C_P + i] = w[w_i * F + w_j];
             }
           }
         }
-        m_w_ps.push_back(w_p); // keep track to free in destructor
 
         cl::Buffer* w_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-                                            SIZE_W_P * sizeof(float), w_p);
-        m_w_p_bufs.push_back(w_p_buf); // keep track to use in kernel calls
+                                            SIZE_W_P * sizeof(float), wt_p);
+        m_wt_p_bufs[c * NUM_F_P + f] = w_p_buf; // keep track to use in kernel calls, indexed normally
 
         inBufVec.push_back(*w_p_buf); // used for enqueing buffers to global memory
       }
     }
 
     //Copy weight input data to device global memory
-    m_queue->enqueueMigrateMemObjects(inBufVec, 0/* 0 means from host*/);
+    m_queue->enqueueMigrateMemObjects(inBufVec, 0); // 0 means from host
     m_queue->finish();
 
     m_hw_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
@@ -85,9 +80,8 @@ public:
     delete m_context;
     delete m_queue;
     delete m_krnl_dmmm;
-    for (size_t i = 0; i < m_w_ps.size(); ++i) {
-      free(m_w_ps[i]);
-      delete m_w_p_bufs[i];
+    for (size_t i = 0; i < NUM_W_P; ++i) {
+      delete m_wt_p_bufs[i];
     }
     delete m_hw_p_buf;
   }
@@ -107,6 +101,7 @@ public:
 
     // operate on each N_P * C_P partition
     for (size_t c = 0; c < NUM_C_P; ++c) {
+      // partition h
       for (size_t i = 0, h_i = H_R_ID * N_P; i < N_P; ++i, ++h_i) {
         for (size_t j = 0, h_j = c * C_P; j < C_P; ++j, ++h_j) {
           if ((h_i >= N) || (h_j >= C)) {
@@ -128,11 +123,11 @@ public:
 
       // operate on each C_P * F_P corresponding to the same c-dimension indices
       for (size_t f = 0; f < NUM_F_P; ++f) {
-        cl::Buffer w_p_buf = *(m_w_p_bufs[c * NUM_F_P + f]);
+        cl::Buffer wt_p_buf = *(m_wt_p_bufs[c * NUM_F_P + f]);
 
         // Launch the systolic array dmmm Kernel, last 2 args always 1
         (*m_krnl_dmmm)(cl::EnqueueArgs(*m_queue, cl::NDRange(1, 1, 1), cl::NDRange(1, 1, 1)),
-                                      h_p_buf, w_p_buf, *m_hw_p_buf, 1, 1);
+                                      h_p_buf, wt_p_buf, *m_hw_p_buf, 1, 1);
 
         // Copy Result from Device Global Memory to Host Local Memory
         m_queue->enqueueMigrateMemObjects(m_outBufVec, CL_MIGRATE_MEM_OBJECT_HOST);
@@ -157,7 +152,6 @@ private:
   // @param input hw_r:       array of size N_P * F to which hw_p is added to
   // @param input HW_P_ID:    index of N_P * F_P slice of hw_r that hw_p is added to
   static void reorder_accumulate(float* hw_p, float* hw_r, const size_t HW_P_ID) {
-    size_t cnt = 0;
     for (int i_t = 0; i_t < U1_I; i_t += U1_I_T) {
       for (int j_t = 0; j_t < U1_J; j_t += U1_J_T) {
         for (int i = 0; i < U1_I_T; i++) {
@@ -168,9 +162,7 @@ private:
             if ((HW_P_ID * F_P) + j_ind < F) {
               unsigned int chunk_offset = ((i_t / U1_I_T) * (U1_J / U1_J_T) + (j_t / U1_J_T)) * U1_I_T * U1_J_T;
               hw_r[(i_ind * F) + (HW_P_ID * F_P) + j_ind] += hw_p[chunk_offset + i * U1_J_T + j];
-            } else {
-	      cnt++;
-	    }
+            }
           }
         }
       }
@@ -180,8 +172,7 @@ private:
   cl::Context* m_context;
   cl::CommandQueue* m_queue;
   cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>* m_krnl_dmmm;
-  std::vector<float*> m_w_ps;
-  std::vector<cl::Buffer*> m_w_p_bufs;
+  cl::Buffer* m_wt_p_bufs[NUM_W_P];
   cl::Buffer* m_hw_p_buf;
 
   std::vector<cl::Memory> m_outBufVec;
