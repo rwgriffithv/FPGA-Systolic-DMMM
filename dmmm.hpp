@@ -17,6 +17,8 @@
     of layer matrix h
 */
 
+typedef std::vector<float, aligned_allocator<float>> aligned_float_vec;
+
 class DMMM {
   
 public:
@@ -40,7 +42,7 @@ public:
     m_krnl_dmmm = new cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>(kernel);
 
     std::vector<cl::Memory> wt_p_bufs_vec;
-    m_wt_ps = (float**)malloc(NUM_W_P * sizeof(float*));
+    m_wt_ps = (aligned_float_vec**)malloc(NUM_W_P * sizeof(aligned_float_vec*));
     if (!m_wt_ps) {
       std::cerr << "ERROR: failed to allocate memory for weight transpose partition pointers in DMMM constructor\n";
       exit(1);
@@ -55,12 +57,9 @@ public:
     for (size_t c = 0; c < NUM_C_P; ++c) {
       for (size_t f = 0; f < NUM_F_P; ++f) {
         
-        // create F_P * C_P transpose partition wt_p
-        float* wt_p = (float*)aligned_alloc(sizeof(float), SIZE_W_P * sizeof(float));
-	if (!wt_p) {
-	  std::cerr << "ERROR: failed to allocate memory for weight transpose partition in DMMM constructor\n";
-	  exit(1);
-	}
+        // create F_P * C_P transpose partition wt_p from aligned allocation
+        aligned_float_vec* wt_p_vec = new aligned_float_vec(SIZE_W_P);
+        float* wt_p = wt_p_vec->data();
         
         for (size_t i = 0, w_i = c * C_P; i < C_P; ++i, ++w_i) {
           for (size_t j = 0, w_j = f * F_P; j < F_P; ++j, ++w_j) {
@@ -73,7 +72,7 @@ public:
           }
         }
 
-	m_wt_ps[c * NUM_F_P + f] = wt_p; // keep track for deallocation upon destruction
+	      m_wt_p_vecs[c * NUM_F_P + f] = wt_p_vec; // keep track for deallocation upon destruction
         cl::Buffer* w_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
                                             SIZE_W_P * sizeof(float), wt_p);
         m_wt_p_bufs[c * NUM_F_P + f] = w_p_buf; // keep track to use in kernel calls, indexed normally
@@ -87,21 +86,15 @@ public:
     m_queue->finish();
 
     // allocate memory for layer partition, values will change depending on operate_row input
-    m_h_p = (float*)aligned_alloc(sizeof(float), SIZE_H_P * sizeof(float));
-    if (!m_h_p) {
-      std::cerr << "ERROR: failed to allocate memory for layer partition in DMMM constructor\n";
-      exit(1);
-    }
+    m_h_p_vec = new aligned_float_vec(SIZE_H_P);
+    m_h_p = m_h_p_vec->data();
     m_h_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
 			       SIZE_H_P * sizeof(float), m_h_p);
     m_h_p_mem.push_back(*m_h_p_buf);
 
     // allocate memory for product of layer partition and weight partition
-    m_hw_p = (float*)aligned_alloc(sizeof(float), SIZE_HW_P * sizeof(float));
-    if (!m_hw_p) {
-      std::cerr << "ERROR: failed to allocate memory for layer-weight partition product in DMMM constructor\n";
-      exit(1);
-    }
+    m_hw_p_vec = new aligned_float_vec(SIZE_HW_P);
+    m_hw_p = h_hw_p_vec->data();
     m_hw_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
 				SIZE_HW_P * sizeof(float), m_hw_p);
     m_hw_p_mem.push_back(*m_hw_p_buf);
@@ -114,16 +107,16 @@ public:
     delete m_krnl_dmmm;
     // weights
     for (size_t i = 0; i < NUM_W_P; ++i) {
-      free(m_wt_ps[i]);
+      delete m_wt_p_vecs[i];
       delete m_wt_p_bufs[i];
     }
-    free(m_wt_ps);
+    free(m_wt_p_vecs);
     free(m_wt_p_bufs);
     // layer
-    free(m_h_p);
+    delete m_h_p_vec;
     delete m_h_p_buf;
     // product
-    free(m_hw_p);
+    delete m_hw_p_vec;
     delete m_hw_p_buf;
   }
 
@@ -161,7 +154,7 @@ public:
       for (size_t f = 0; f < NUM_F_P; ++f) {
         cl::Buffer wt_p_buf = *(m_wt_p_bufs[c * NUM_F_P + f]);
 
-        // Launch the systolic array dmmm Kernel, last 2 args always 1
+        // Launch the systolic parray dmmm Kernel, last 2 args always 1
         (*m_krnl_dmmm)(cl::EnqueueArgs(*m_queue, cl::NDRange(1, 1, 1), cl::NDRange(1, 1, 1)),
                                       *m_h_p_buf, wt_p_buf, *m_hw_p_buf, 1, 1);
 
@@ -193,11 +186,13 @@ private:
   cl::Context* m_context;
   cl::CommandQueue* m_queue;
   cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>* m_krnl_dmmm;
-  float** m_wt_ps;
+  aligned_float_vec** m_wt_p_vecs; // NUM_W_P partitions of size C_P * F_P
   cl::Buffer** m_wt_p_bufs;
-  float* m_h_p;   // N_P * C_P
+  aligned_float_vec* m_h_p_vec;   // N_P * C_P
+  float* m_h_p;
   cl::Buffer* m_h_p_buf;
-  float* m_hw_p;  // N_P * F_P
+  aligned_float_vec* m_hw_p_vec;  // N_P * F_P
+  float* m_hw_p;
   cl::Buffer* m_hw_p_buf;
 
   std::vector<cl::Memory> m_h_p_mem; // for loading altered layer partitions to kernel
