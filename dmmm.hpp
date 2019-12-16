@@ -40,9 +40,14 @@ public:
     m_krnl_dmmm = new cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>(kernel);
 
     std::vector<cl::Memory> inBufVec;
+    m_wt_ps = (float**)malloc(NUM_W_P * sizeof(float*));
+    if (!m_wt_ps) {
+      std::cerr << "ERROR: failed to allocate memory for weight transpose partition pointers in DMMM\n";
+      exit(1);
+    }
     m_wt_p_bufs = (cl::Buffer**)malloc(NUM_W_P * sizeof(cl::Buffer*));
     if (!m_wt_p_bufs) {
-      std::cerr << "ERROR: failed to allocate memory for weight partition buffer pointers in DMMM\n";
+      std::cerr << "ERROR: failed to allocate memory for weight transpose partition buffer pointers in DMMM\n";
       exit(1);
     }
 
@@ -51,7 +56,11 @@ public:
       for (size_t f = 0; f < NUM_F_P; ++f) {
         
         // create F_P * C_P transpose partition wt_p
-        float wt_p[F_P * C_P];
+        float* wt_p = (float*) malloc(SIZE_W_P * sizeof(float));
+	if (!wt_p) {
+	  std::cerr << "ERROR: failed to allocate memory for weight transpose partition in DMMM\n";
+	  exit(1);
+	}
         
         for (size_t i = 0, w_i = c * C_P; i < C_P; ++i, ++w_i) {
           for (size_t j = 0, w_j = f * F_P; j < F_P; ++j, ++w_j) {
@@ -64,6 +73,7 @@ public:
           }
         }
 
+	m_wt_ps[c * NUM_F_P + f] = wt_p; // keep track for deallocation upon destruction
         cl::Buffer* w_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
                                             SIZE_W_P * sizeof(float), wt_p);
         m_wt_p_bufs[c * NUM_F_P + f] = w_p_buf; // keep track to use in kernel calls, indexed normally
@@ -86,8 +96,10 @@ public:
     delete m_queue;
     delete m_krnl_dmmm;
     for (size_t i = 0; i < NUM_W_P; ++i) {
+      free(m_wt_ps[i]);
       delete m_wt_p_bufs[i];
     }
+    free(m_wt_ps);
     free(m_wt_p_bufs);
     delete m_hw_p_buf;
   }
@@ -98,8 +110,8 @@ public:
   // @param input   H_R_ID:   index of N_P * C_P slice in total layer matrix, < NUM_N_P
   void operate_row(float* h_r, float* hw_r, const size_t H_R_ID) {
     // zero initialize K * F output in which partial N_P * F_P are accumulated
-    for (int i = 0, hw_r_i = H_R_ID * N_P; i < N_P; ++i, ++hw_r_i) {
-      for (int j = 0; j < F; ++j) {
+    for (size_t i = 0, hw_r_i = H_R_ID * N_P; i < N_P; ++i, ++hw_r_i) {
+      for (size_t j = 0; j < F; ++j) {
         if (hw_r_i < N) {
           hw_r[i * F + j] = 0.0;
         }
@@ -143,14 +155,18 @@ public:
         m_queue->enqueueMigrateMemObjects(m_outBufVec, CL_MIGRATE_MEM_OBJECT_HOST);
         m_queue->finish(); // synchronization barrier
 
-        reorder_accumulate(m_hw_p, hw_r, H_R_ID, f);
+        accumulate_hw_partition(m_hw_p, hw_r, H_R_ID, f);
       }
     }
   }
 
 private:
 
-  static void reorder_accumulate(float* hw_p, float* hw_r, const size_t HW_R_ID, const size_t HW_P_ID) {
+  // @param input hw_p:       array of size N_P * F_P
+  // @param input hw_r:       array of size N_P * F to which hw_p is added to
+  // @param input HW_R_ID:    index of N_P * F slice of hw that hw_r is (for bounds checks)
+  // @param input HW_P_ID:    index of N_P * F_P slice of hw_r that hw_p is added to (for bounds checks)
+  static void accumulate_hw_partition(float* hw_p, float* hw_r, const size_t HW_R_ID, const size_t HW_P_ID) {
     for (size_t i = 0, hw_r_i = HW_R_ID * N_P; i < N_P; ++i, ++hw_r_i) {
       for (size_t j = 0, hw_r_j = HW_P_ID * F_P; j < F_P; ++j, ++hw_r_j) {
         if ((hw_r_i < N) && (hw_r_j < F)) {
@@ -160,37 +176,10 @@ private:
     }
   }
 
-
-  // uses constants from common_header_U1.h
-  // constants set when kernel is build from specifications in vsa.json
-  // reordering is dependent on these constants
-  // function modified from Jie's tb_app.cpp to also accumulate
-  // U1_I_T = N_P
-  // U1_J_T = F_P
-  // @param input hw_p:       array of size N_P * F_P
-  // @param input hw_r:       array of size N_P * F to which hw_p is added to
-  // @param input HW_P_ID:    index of N_P * F_P slice of hw_r that hw_p is added to
-  static void reorder_accumulate_old(float* hw_p, float* hw_r, const size_t HW_P_ID) {
-    for (int i_t = 0; i_t < U1_I; i_t += U1_I_T) {
-      for (int j_t = 0; j_t < U1_J; j_t += U1_J_T) {
-        for (int i = 0; i < U1_I_T; i++) {
-          for(int j = 0; j < U1_J_T; j++){
-            unsigned int i_ind = i_t + i;
-            unsigned int j_ind = j_t + j;
-            // bounds check because F <= F_P * NUM_F_P, extra columns of hw_p are filled with zeros
-            if ((HW_P_ID * F_P) + j_ind < F) {
-              unsigned int chunk_offset = ((i_t / U1_I_T) * (U1_J / U1_J_T) + (j_t / U1_J_T)) * U1_I_T * U1_J_T;
-              hw_r[(i_ind * F) + (HW_P_ID * F_P) + j_ind] += hw_p[chunk_offset + i * U1_J_T + j];
-	    }
-          }
-        }
-      }
-    }
-  }
-
   cl::Context* m_context;
   cl::CommandQueue* m_queue;
   cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>* m_krnl_dmmm;
+  float** m_wt_ps;
   cl::Buffer** m_wt_p_bufs;
   cl::Buffer* m_hw_p_buf;
 

@@ -21,11 +21,11 @@ int main() {
   DMMM D(w, k_name);
   std::cout << "DMMM created\n";
 
-  const float* hw_r;
-  size_t i_hw = 0;
   for (size_t n = 0; n < NUM_N_P; ++n) {
     D.operate_row(&(h[n * SIZE_H_R]), &(hw[n * SIZE_HW_R]), n);
-    std::cout << "calculated output rows " << n * N_P << " to " << (n + 1) * N_P - 1 << "\n";
+
+    size_t end_row_id = (n == NUM_N_P - 1) ? N - 1 : (n + 1) * N_P - 1;
+    std::cout << "calculated output rows " << n * N_P << " to " << end_row_id << "\n";
   }
 
   size_t error_cnt = 0;
@@ -63,6 +63,8 @@ int main() {
     std::cout << "due to many errors, checking for edge value at (" << N-3 << "," << 3 << "): " << hw[(N - 3) * F + F-3] << "\n";
     std::cout << "due to many errors, checking for edge value at (" << N-2 << "," << 2 << "): " << hw[(N - 2) * F + F-2] << "\n";
     std::cout << "due to many errors, checking for edge value at (" << N-1 << "," << 1 << "): " << hw[(N - 1) * F + F-1] << "\n";
+  } else {
+    std::cout << "SUCCESS!\n";
   }
 
   return 0;
