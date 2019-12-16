@@ -135,6 +135,7 @@ public:
     
     // operate on each N_P * C_P partition
     for (size_t c = 0; c < NUM_C_P; ++c) {
+
       // partition h into m_h_p, already allocated space on heap
       for (size_t i = 0, h_i = H_R_ID * N_P; i < N_P; ++i, ++h_i) {
         for (size_t j = 0, h_j = c * C_P; j < C_P; ++j, ++h_j) {
