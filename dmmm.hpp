@@ -42,8 +42,8 @@ public:
     m_krnl_dmmm = new cl::KernelFunctor<cl::Buffer&, cl::Buffer&, cl::Buffer&, bool, unsigned int>(kernel);
 
     std::vector<cl::Memory> wt_p_bufs_vec;
-    m_wt_ps = (aligned_float_vec**)malloc(NUM_W_P * sizeof(aligned_float_vec*));
-    if (!m_wt_ps) {
+    m_wt_p_vecs = (aligned_float_vec**)malloc(NUM_W_P * sizeof(aligned_float_vec*));
+    if (!m_wt_p_vecs) {
       std::cerr << "ERROR: failed to allocate memory for weight transpose partition pointers in DMMM constructor\n";
       exit(1);
     }
