@@ -1,6 +1,7 @@
 #ifndef DMMMM_HPP
 #define DMMMM_HPP
 
+#include <stdlib.h>
 #include <vector>
 #include <iostream>
 #include <string>
@@ -20,7 +21,6 @@ class DMMM {
   
 public:
   
-  // may need to make sure w is contiguous is memory using an alligned_allocator?
   // @param input w:  C * F weight matrix for the layer
   // @param input kernel_name:  filename of the kernel binary and the top level function of the kernel
   DMMM(float* w, const std::string kernel_name) {
@@ -56,7 +56,7 @@ public:
       for (size_t f = 0; f < NUM_F_P; ++f) {
         
         // create F_P * C_P transpose partition wt_p
-        float* wt_p = (float*)malloc(SIZE_W_P * sizeof(float));
+        float* wt_p = (float*)aligned_alloc(sizeof(float), SIZE_W_P * sizeof(float));
 	if (!wt_p) {
 	  std::cerr << "ERROR: failed to allocate memory for weight transpose partition in DMMM constructor\n";
 	  exit(1);
@@ -87,7 +87,7 @@ public:
     m_queue->finish();
 
     // allocate memory for layer partition, values will change depending on operate_row input
-    m_h_p = (float*)malloc(SIZE_H_P * sizeof(float));
+    m_h_p = (float*)aligned_alloc(sizeof(float), SIZE_H_P * sizeof(float));
     if (!m_h_p) {
       std::cerr << "ERROR: failed to allocate memory for layer partition in DMMM constructor\n";
       exit(1);
@@ -97,7 +97,7 @@ public:
     m_h_p_mem.push_back(*m_h_p_buf);
 
     // allocate memory for product of layer partition and weight partition
-    m_hw_p = (float*)malloc(SIZE_HW_P * sizeof(float));
+    m_hw_p = (float*)aligned_alloc(sizeof(float), SIZE_HW_P * sizeof(float));
     if (!m_hw_p) {
       std::cerr << "ERROR: failed to allocate memory for layer-weight partition product in DMMM constructor\n";
       exit(1);
@@ -127,7 +127,6 @@ public:
     delete m_hw_p_buf;
   }
 
-  // may need to make sure h is contiguous is memory using an alligned_allocator?
   // @param input   h_r:      K * C slice of layer matrix, K <= N_P
   // @param input   hw_r:     N_P * F array to store the product of h_r and weight matrix w
   // @param input   H_R_ID:   index of N_P * C_P slice in total layer matrix, < NUM_N_P
@@ -204,15 +203,5 @@ private:
   std::vector<cl::Memory> m_h_p_mem; // for loading altered layer partitions to kernel
   std::vector<cl::Memory> m_hw_p_mem; // for recieving layer-weight partition product from kernel
 };
-
-
-/*
-  contiguous vector types used in the host code for our lab projects (specifically lab II):
-
-  vector<unsigned long, aligned_allocator<unsigned long>> train_image(18000);
-  vector<unsigned long, aligned_allocator<unsigned long>> test_image(180);
-  vector<unsigned char, aligned_allocator<unsigned char>> knn_mat(30);
-  vector<int, aligned_allocator<int>> test_label(180);
-*/
 
 #endif
