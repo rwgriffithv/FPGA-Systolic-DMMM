@@ -94,7 +94,7 @@ public:
 
     // allocate memory for product of layer partition and weight partition
     m_hw_p_vec = new aligned_float_vec(SIZE_HW_P);
-    m_hw_p = h_hw_p_vec->data();
+    m_hw_p = m_hw_p_vec->data();
     m_hw_p_buf = new cl::Buffer(*m_context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_WRITE,
 				SIZE_HW_P * sizeof(float), m_hw_p);
     m_hw_p_mem.push_back(*m_hw_p_buf);
